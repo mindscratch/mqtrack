@@ -4,11 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"log"
 	"net"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -32,9 +30,6 @@ var dropwarn = "E! Error: server message queue full. " +
 	"We have dropped %d messages so far. " +
 	"You may want to increase allowed_pending_messages in the config\n"
 
-var malformedwarn = "E! server over TCP has received %d malformed packets" +
-	" thus far."
-
 // Initially this code was copied from https://github.com/influxdata/telegraf/blob/master/plugins/inputs/statsd/statsd.go
 type Server struct {
 	// Protocol used on listener - udp or tcp
@@ -47,26 +42,10 @@ type Server struct {
 	// fills up, packets will get dropped until the next Gather interval is ran.
 	AllowedPendingMessages int
 
-	// Percentiles specifies the percentiles that will be calculated for timing
-	// and histogram stats.
-	Percentiles     []int
-	PercentileLimit int
+	// Customize how lines are parsed into Records
+	LineParser LineParserFunc
 
-	DeleteGauges   bool
-	DeleteCounters bool
-	DeleteSets     bool
-	DeleteTimings  bool
-	ConvertNames   bool
-
-	LineParser *regexp.Regexp
-
-	// UDPPacketSize is deprecated, it's only here for legacy support
-	// we now always create 1 max size buffer and then copy only what we need
-	// into the in channel
-	// see https://github.com/influxdata/telegraf/pull/992
-	UDPPacketSize int `toml:"udp_packet_size"`
-
-	ReadBufferSize int `toml:"read_buffer_size"`
+	ReadBufferSize int
 
 	sync.Mutex
 	// Lock for preventing a data race during resource cleanup
@@ -78,15 +57,10 @@ type Server struct {
 	accept chan bool
 	// drops tracks the number of dropped metrics.
 	drops int
-	// malformed tracks the number of malformed packets
-	malformed int
 
 	// Channel for all incoming statsd packets
 	in   chan *bytes.Buffer
 	done chan struct{}
-
-	// bucket -> influx templates
-	Templates []string
 
 	// Protocol listeners
 	UDPlistener *net.UDPConn
@@ -134,6 +108,7 @@ func (s *Server) Start() error {
 	return nil
 }
 
+// Wait for the server to finish
 func (s *Server) Wait() {
 	s.wg.Wait()
 }
@@ -261,20 +236,12 @@ func (s *Server) parseLine(line string) error {
 	s.Lock()
 	defer s.Unlock()
 
-	// Validate splitting the line
-	bits := s.LineParser.FindStringSubmatch(line)
-	if len(bits) < 4 {
-		log.Printf("E! Error: splitting, got %d bits, line: %v\n", len(bits), bits)
-		return errors.New("Error Parsing statsd line")
+	record, err := s.LineParser(line)
+	if err != nil {
+		fmt.Printf("error parsing line: %v\n", err)
+		return err
 	}
-
-	// Extract bucket name from individual metric bits
-	appName, dests, publisherOrConsumer := bits[1], bits[2], bits[3]
-	fmt.Println("app", appName, "dests", dests)
-	destinations := strings.Split(dests, ",")
-	record := NewRecord(appName, destinations, publisherOrConsumer == "p", publisherOrConsumer == "c")
 	fmt.Printf("record: %#v\n", record)
-	// Save(record, s.db)
 
 	return nil
 }

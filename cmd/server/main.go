@@ -2,27 +2,37 @@ package main
 
 import (
 	"fmt"
-	"regexp"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/mindscratch/foobarbaz"
 )
 
 func main() {
-	// <app name>|destinations comma-delimited|<p or c for publisher or consumer>
-	lp := regexp.MustCompile(`^([^|]+)\|(.*)\|([pc])$`)
+	sigCh := make(chan os.Signal)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
 	srv := &foobarbaz.Server{
 		Protocol:               "tcp", //defaultProtocol,
 		ServiceAddress:         ":8125",
 		MaxTCPConnections:      250,
 		TCPKeepAlive:           false,
-		LineParser:             lp,
+		LineParser:             foobarbaz.DefaultLineParser(),
 		AllowedPendingMessages: 1000,
-		DeleteCounters:         true,
-		DeleteGauges:           true,
-		DeleteSets:             true,
-		DeleteTimings:          true,
 	}
+
+	go func() {
+		signalType := <-sigCh
+		signal.Stop(sigCh)
+
+		log.Println("received signal, type:", signalType)
+
+		srv.Stop()
+		os.Exit(0)
+	}()
+
 	err := srv.Start()
 	if err != nil {
 		fmt.Printf("ERR: %#v\n", err)
