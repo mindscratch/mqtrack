@@ -1,4 +1,4 @@
-package main
+package foobarbaz
 
 import (
 	"bufio"
@@ -28,14 +28,15 @@ const (
 	MaxTCPConnections          = 250
 )
 
-var dropwarn = "E! Error: statsd message queue full. " +
+var dropwarn = "E! Error: server message queue full. " +
 	"We have dropped %d messages so far. " +
 	"You may want to increase allowed_pending_messages in the config\n"
 
-var malformedwarn = "E! Statsd over TCP has received %d malformed packets" +
+var malformedwarn = "E! server over TCP has received %d malformed packets" +
 	" thus far."
 
-type Statsd struct {
+// Initially this code was copied from https://github.com/influxdata/telegraf/blob/master/plugins/inputs/statsd/statsd.go
+type Server struct {
 	// Protocol used on listener - udp or tcp
 	Protocol string `toml:"protocol"`
 
@@ -103,7 +104,7 @@ type Statsd struct {
 	bufPool sync.Pool
 }
 
-func (s *Statsd) Start() error {
+func (s *Server) Start() error {
 	s.Lock()
 	defer s.Unlock()
 
@@ -133,8 +134,12 @@ func (s *Statsd) Start() error {
 	return nil
 }
 
+func (s *Server) Wait() {
+	s.wg.Wait()
+}
+
 // tcpListen() starts listening for tcp packets on the configured port.
-func (s *Statsd) tcpListen() error {
+func (s *Server) tcpListen() error {
 	defer s.wg.Done()
 	// Start listener
 	var err error
@@ -144,7 +149,7 @@ func (s *Statsd) tcpListen() error {
 		log.Fatalf("ERROR: ListenTCP - %s", err)
 		return err
 	}
-	log.Println("I! TCP Statsd listening on: ", s.TCPlistener.Addr().String())
+	log.Println("I! TCP Server listening on: ", s.TCPlistener.Addr().String())
 	for {
 		select {
 		case <-s.done:
@@ -185,7 +190,7 @@ func (s *Statsd) tcpListen() error {
 }
 
 // udpListen starts listening for udp packets on the configured port.
-func (s *Statsd) udpListen() error {
+func (s *Server) udpListen() error {
 	defer s.wg.Done()
 	var err error
 	address, _ := net.ResolveUDPAddr(s.Protocol, s.ServiceAddress)
@@ -193,7 +198,7 @@ func (s *Statsd) udpListen() error {
 	if err != nil {
 		log.Fatalf("ERROR: ListenUDP - %s", err)
 	}
-	log.Println("I! Statsd UDP listener listening on: ", s.UDPlistener.LocalAddr().String())
+	log.Println("I! Server UDP listener listening on: ", s.UDPlistener.LocalAddr().String())
 
 	if s.ReadBufferSize > 0 {
 		s.UDPlistener.SetReadBuffer(s.ReadBufferSize)
@@ -227,9 +232,9 @@ func (s *Statsd) udpListen() error {
 }
 
 // parser monitors the s.in channel, if there is a packet ready, it parses the
-// packet into statsd strings and then calls parseStatsdLine, which parses a
-// single statsd metric into a struct.
-func (s *Statsd) parser() error {
+// packet into strings and then calls parseLine, which parses a
+// single record into a struct.
+func (s *Server) parser() error {
 	defer s.wg.Done()
 	for {
 		select {
@@ -241,6 +246,7 @@ func (s *Statsd) parser() error {
 			for _, line := range lines {
 				line = strings.TrimSpace(line)
 				if line != "" {
+					// TODO
 					fmt.Println("LINE:", line)
 					s.parseLine(line)
 				}
@@ -251,7 +257,7 @@ func (s *Statsd) parser() error {
 
 // parseLine will parse the given line, validating it as it goes.
 // If the line is valid, it will be stored
-func (s *Statsd) parseLine(line string) error {
+func (s *Server) parseLine(line string) error {
 	s.Lock()
 	defer s.Unlock()
 
@@ -274,7 +280,7 @@ func (s *Statsd) parseLine(line string) error {
 }
 
 // handler handles a single TCP Connection
-func (s *Statsd) handler(conn *net.TCPConn, id string) {
+func (s *Server) handler(conn *net.TCPConn, id string) {
 	// connection cleanup function
 	defer func() {
 		s.wg.Done()
@@ -317,7 +323,7 @@ func (s *Statsd) handler(conn *net.TCPConn, id string) {
 }
 
 // refuser refuses a TCP connection
-func (s *Statsd) refuser(conn *net.TCPConn) {
+func (s *Server) refuser(conn *net.TCPConn) {
 	conn.Close()
 	log.Printf("I! Refused TCP Connection from %s", conn.RemoteAddr())
 	log.Printf("I! WARNING: Maximum TCP Connections reached, you may want to" +
@@ -325,20 +331,20 @@ func (s *Statsd) refuser(conn *net.TCPConn) {
 }
 
 // forget a TCP connection
-func (s *Statsd) forget(id string) {
+func (s *Server) forget(id string) {
 	s.cleanup.Lock()
 	defer s.cleanup.Unlock()
 	delete(s.conns, id)
 }
 
 // remember a TCP connection
-func (s *Statsd) remember(id string, conn *net.TCPConn) {
+func (s *Server) remember(id string, conn *net.TCPConn) {
 	s.cleanup.Lock()
 	defer s.cleanup.Unlock()
 	s.conns[id] = conn
 }
 
-func (s *Statsd) Stop() {
+func (s *Server) Stop() {
 	s.Lock()
 	log.Println("I! Stopping the statsd service")
 	close(s.done)
@@ -366,12 +372,12 @@ func (s *Statsd) Stop() {
 
 	s.Lock()
 	close(s.in)
-	log.Println("I! Stopped Statsd listener service on ", s.ServiceAddress)
+	log.Println("I! Stopped Server listener service on ", s.ServiceAddress)
 	s.Unlock()
 }
 
 // IsUDP returns true if the protocol is UDP, false otherwise.
-func (s *Statsd) isUDP() bool {
+func (s *Server) isUDP() bool {
 	return strings.HasPrefix(s.Protocol, "udp")
 }
 
@@ -385,61 +391,4 @@ func RandomString(n int) string {
 		bytes[i] = alphanum[b%byte(len(alphanum))]
 	}
 	return string(bytes)
-}
-
-func main() {
-	// opts := badger.DefaultOptions
-	// opts.Dir = "/tmp/badger"
-	// opts.ValueDir = "/tmp/badger"
-	// db, err := badger.Open(opts)
-	// if err != nil {
-	// 	log.Fatalf("error opening database: %v", err)
-	// }
-	// defer db.Close()
-
-	// r, err := Get([]byte("foo"), db)
-	// if true {
-	// 	fmt.Printf("error: %v\n", err)
-	// 	fmt.Printf("record: %#v\n", r)
-	// 	return
-	// }
-
-	// <app name>|destinations comma-delimited|<p or c for publisher or consumer>
-	lp := regexp.MustCompile(`^([^|]+)\|(.*)\|([pc])$`)
-
-	srv := &Statsd{
-		Protocol:               "tcp", //defaultProtocol,
-		ServiceAddress:         ":8125",
-		MaxTCPConnections:      250,
-		TCPKeepAlive:           false,
-		LineParser:             lp,
-		AllowedPendingMessages: defaultAllowPendingMessage,
-		DeleteCounters:         true,
-		DeleteGauges:           true,
-		DeleteSets:             true,
-		DeleteTimings:          true,
-	}
-	err := srv.Start()
-	if err != nil {
-		fmt.Printf("ERR: %#v\n", err)
-	}
-	srv.wg.Wait()
-}
-
-// One statsd metric, form is <bucket>:<value>|<mtype>|@<samplerate>
-type Record struct {
-	AppName      string
-	Destinations []string
-	Publisher    bool
-	Consumer     bool
-}
-
-func NewRecord(appName string, destinations []string, publisher, consumer bool) *Record {
-	r := Record{
-		AppName:      appName,
-		Destinations: destinations,
-		Publisher:    publisher,
-		Consumer:     consumer,
-	}
-	return &r
 }
