@@ -14,14 +14,7 @@ func main() {
 	sigCh := make(chan os.Signal)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
-	srv := &foobarbaz.Server{
-		Protocol:               "tcp", //defaultProtocol,
-		ServiceAddress:         ":8125",
-		MaxTCPConnections:      250,
-		TCPKeepAlive:           false,
-		LineParser:             foobarbaz.DefaultLineParser(),
-		AllowedPendingMessages: 1000,
-	}
+	srv := foobarbaz.NewServer()
 
 	go func() {
 		signalType := <-sigCh

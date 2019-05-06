@@ -58,7 +58,7 @@ type Server struct {
 	// drops tracks the number of dropped metrics.
 	drops int
 
-	// Channel for all incoming statsd packets
+	// Channel for all incoming packets
 	in   chan *bytes.Buffer
 	done chan struct{}
 
@@ -69,13 +69,26 @@ type Server struct {
 	// track current connections so we can close them in Stop()
 	conns map[string]*net.TCPConn
 
-	MaxTCPConnections int `toml:"max_tcp_connections"`
+	MaxTCPConnections int
 
-	TCPKeepAlive       bool           `toml:"tcp_keep_alive"`
-	TCPKeepAlivePeriod *time.Duration `toml:"tcp_keep_alive_period"`
+	TCPKeepAlive       bool
+	TCPKeepAlivePeriod *time.Duration
 
 	// A pool of byte slices to handle parsing
 	bufPool sync.Pool
+}
+
+// NewServer creates a TCP server listening on port 8125 using the DefaultLineParser.
+func NewServer() *Server {
+	srv := Server{
+		Protocol:               "tcp",
+		ServiceAddress:         ":8125",
+		MaxTCPConnections:      250,
+		TCPKeepAlive:           false,
+		LineParser:             DefaultLineParser(),
+		AllowedPendingMessages: 1000,
+	}
+	return &srv
 }
 
 func (s *Server) Start() error {
@@ -104,7 +117,7 @@ func (s *Server) Start() error {
 	}
 	// Start the line parser
 	go s.parser()
-	log.Printf("I! Started the statsd service on %s\n", s.ServiceAddress)
+	log.Printf("I! Started the server on %s\n", s.ServiceAddress)
 	return nil
 }
 
@@ -313,7 +326,7 @@ func (s *Server) remember(id string, conn *net.TCPConn) {
 
 func (s *Server) Stop() {
 	s.Lock()
-	log.Println("I! Stopping the statsd service")
+	log.Println("I! Stopping the server")
 	close(s.done)
 	if s.isUDP() {
 		s.UDPlistener.Close()
