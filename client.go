@@ -58,9 +58,9 @@ func NewClient(address, appName string, destinations []string, publisher bool) (
 
 	record := fmt.Sprintf("%s|%s|", appName, strings.Join(destinations, ","))
 	if publisher {
-		record += "|p"
+		record += "p"
 	} else {
-		record += "|c"
+		record += "c"
 	}
 
 	c := Client{
