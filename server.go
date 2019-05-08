@@ -1,4 +1,4 @@
-package foobarbaz
+package mqtrack
 
 import (
 	"bufio"
@@ -82,6 +82,19 @@ type Server struct {
 func NewServer() *Server {
 	srv := Server{
 		Protocol:               "tcp",
+		ServiceAddress:         ":8125",
+		MaxTCPConnections:      250,
+		TCPKeepAlive:           false,
+		LineParser:             DefaultLineParser(),
+		AllowedPendingMessages: 1000,
+	}
+	return &srv
+}
+
+// NewUDPServer creates a UDP server listening on port 8125 using the DefaultLineParser.
+func NewUDPServer() *Server {
+	srv := Server{
+		Protocol:               "udp",
 		ServiceAddress:         ":8125",
 		MaxTCPConnections:      250,
 		TCPKeepAlive:           false,

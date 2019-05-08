@@ -1,4 +1,4 @@
-# foobarbaz
+# mqtrack
 
 An application for consuming lines of text and storing them.
 

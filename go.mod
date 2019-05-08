@@ -1,4 +1,4 @@
-module github.com/mindscratch/foobarbaz
+module github.com/mindscratch/mqtrack
 
 go 1.12
 

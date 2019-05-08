@@ -1,4 +1,4 @@
-package foobarbaz
+package mqtrack
 
 import (
 	"errors"

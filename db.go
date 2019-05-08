@@ -1,4 +1,4 @@
-package foobarbaz
+package mqtrack
 
 // One statsd metric, form is <bucket>:<value>|<mtype>|@<samplerate>
 type Record struct {

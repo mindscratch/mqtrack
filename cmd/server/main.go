@@ -7,14 +7,14 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/mindscratch/foobarbaz"
+	"github.com/mindscratch/mqtrack"
 )
 
 func main() {
 	sigCh := make(chan os.Signal)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
-	srv := foobarbaz.NewServer()
+	srv := mqtrack.NewUDPServer()
 
 	go func() {
 		signalType := <-sigCh
