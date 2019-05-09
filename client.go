@@ -1,6 +1,7 @@
 package mqtrack
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -27,23 +28,16 @@ func (e *NotConnectedError) Error() string {
 
 // Client is a client which uses UDP for recording MQ tracking messages.
 type Client struct {
-	addr         *net.UDPAddr
-	conn         *net.UDPConn
-	appName      string
-	destinations []string
-	publisher    bool
-	consumer     bool
-	record       string
+	addr    *net.UDPAddr
+	conn    *net.UDPConn
+	appName string
 }
 
 // NewClient creates a new client and resolves the given address, returning an
 // error if there's a problem with the address.
 //
 // The appName is the name of the application being tracked.
-// The destinations should be a list of MQ destinations being published to or consumed from.
-// The publisher should be true if the client is tracking something which is publishing messages,
-// false if its consuming.
-func NewClient(address, appName string, destinations []string, publisher bool) (*Client, error) {
+func NewClient(address, appName string) (*Client, error) {
 	addr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		return nil, err
@@ -52,26 +46,17 @@ func NewClient(address, appName string, destinations []string, publisher bool) (
 	if appName == "" {
 		return nil, fmt.Errorf("appName must be provided")
 	}
-	if len(destinations) == 0 {
-		return nil, fmt.Errorf("one or more destinations must be provided")
-	}
-
-	record := fmt.Sprintf("%s|%s|", appName, strings.Join(destinations, ","))
-	if publisher {
-		record += "p"
-	} else {
-		record += "c"
-	}
 
 	c := Client{
-		addr:         addr,
-		appName:      appName,
-		destinations: destinations,
-		publisher:    publisher,
-		consumer:     !publisher,
-		record:       record,
+		addr:    addr,
+		appName: appName,
 	}
 	return &c, nil
+}
+
+// SetAppName configures the application name being tracked
+func (c *Client) SetAppName(appName string) {
+	c.appName = appName
 }
 
 // Connect "connects" to the UDP address.
@@ -99,13 +84,22 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// Record the information provided when creating the client.
-// If the client is not connected a NotConnectedError is returned. If
-// a problem occurs while sending, another error will be returned.
-func (c *Client) Record() error {
+// Record that the application published (or consumed, if publisher is false)
+// to the given destinations. If the client is not connected a
+// NotConnectedError is returned. If a problem occurs while sending,
+// another error will be returned.
+func (c *Client) Record(destinations []string, publisher bool) error {
 	if c.conn == nil {
 		return NewNotConnectedError(fmt.Sprintf("client is no longer connected to %s", c.addr.String()))
 	}
-	_, err := fmt.Fprintf(c.conn, c.record)
+	if len(destinations) == 0 {
+		return errors.New("unable to record, destinations were not provided")
+	}
+	mode := "c"
+	if publisher {
+		mode = "p"
+	}
+
+	_, err := fmt.Fprintf(c.conn, c.appName+"|"+strings.Join(destinations, ",")+"|"+mode)
 	return err
 }

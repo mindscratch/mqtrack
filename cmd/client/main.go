@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	client, err := mqtrack.NewClient("localhost:8125", "myapp", []string{"foo", "bar", "baz"}, true)
+	client, err := mqtrack.NewClient("localhost:8125", "myapp")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -18,7 +18,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	client.Record()
+	err = client.Record([]string{"foo", "bar", "baz"}, true)
 	if err != nil {
 		log.Fatal(err)
 	}
